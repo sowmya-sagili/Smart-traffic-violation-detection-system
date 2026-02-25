@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Models
+*.pt
+*.yaml
+
+# Media
+videos/
+*.mp4
+*.avi
+
+# Environments
+venv/
+.env
