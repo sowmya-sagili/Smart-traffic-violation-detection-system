@@ -1,16 +1,52 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
 
-# Models
-*.pt
-*.yaml
-
-# Media
-videos/
-*.mp4
-*.avi
-
-# Environments
+# Virtual environments
+.venv/
 venv/
+env/
+ENV/
+
+# Environment and secrets
 .env
+.env.*
+*.env
+
+# IDE / Editor configurations
+.vscode/
+.idea/
+
+# Large binary model weights
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# Videos & media files
+*.mp4
+*.MP4
+*.avi
+*.AVI
+*.mov
+*.MOV
+*.mkv
+*.MKV
+
+# Application runtime storage (preserve directories via .gitkeep)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/outputs/*
+!backend/outputs/.gitkeep
+backend/evidence/*
+!backend/evidence/.gitkeep
+
+# Logs, databases, and OS files
+*.log
+*.sqlite
+*.sqlite3
+.DS_Store
+Thumbs.db
+.git_archive/
+*.git_archive/

@@ -1,0 +1,39 @@
+{
+  "stop_line": [
+    [
+      500,
+      500
+    ],
+    [
+      500,
+      900
+    ]
+  ],
+  "traffic_light_roi": [
+    [
+      50,
+      50
+    ],
+    [
+      150,
+      200
+    ]
+  ],
+  "traffic_light_mode": "red",
+  "speed": {
+    "line_a": [
+      [520, 450],
+      [520, 950]
+    ],
+    "line_b": [
+      [730, 450],
+      [730, 950]
+    ],
+    "distance_meters": 10.0,
+    "speed_limit_kmh": 60.0
+  },
+  "helmet": {
+    "helmet_confidence_threshold": 0.40,
+    "confirmation_frames": 3
+  }
+}

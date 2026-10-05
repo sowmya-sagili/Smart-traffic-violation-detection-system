@@ -16,21 +16,27 @@ def segments_intersect(a, b, c, d):
     """Checks if the path of a vehicle (a->b) crosses the violation line (c->d)."""
     return ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d)
 
-def draw_stats_panel(frame, violations_count):
+def draw_stats_panel(frame, violations_count, label="Violations:"):
     """Draws the semi-transparent violation counter in the top-left corner."""
     panel_w, panel_h = 260, 70
     x0, y0 = 15, 15
+    h_frame, w_frame = frame.shape[:2]
+    if y0 + panel_h > h_frame or x0 + panel_w > w_frame:
+        # Scale or adapt if frame is very small
+        put_text(frame, f"{label} {violations_count}", (x0, y0 + 20), COLOR_BAD, 0.7, 2)
+        return
+
     overlay = frame.copy()
     cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (25, 25, 25), -1)
-    frame[y0:y0 + panel_h, x0:x0 + panel_h] = cv2.addWeighted(
-        overlay[y0:y0 + panel_h, x0:x0 + panel_h], 0.45,
-        frame[y0:y0 + panel_h, x0:x0 + panel_h], 0.55, 0
+    frame[y0:y0 + panel_h, x0:x0 + panel_w] = cv2.addWeighted(
+        overlay[y0:y0 + panel_h, x0:x0 + panel_w], 0.45,
+        frame[y0:y0 + panel_h, x0:x0 + panel_w], 0.55, 0
     )
-    put_text(frame, "Violations:", (x0 + 12, y0 + 28), COLOR_TEXT, 0.7, 2)
+    put_text(frame, label, (x0 + 12, y0 + 28), COLOR_TEXT, 0.7, 2)
     put_text(frame, f"{violations_count}", (x0 + 12, y0 + 58), COLOR_BAD, 0.95, 2)
 
 def auto_open_video(path):
-    """Opens the resulting video file automatically based on the OS."""
+    """Opens the resulting video file automatically based on the OS (desktop mode)."""
     try:
         if os.name == 'nt':
             os.startfile(path)

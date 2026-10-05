@@ -1,0 +1,96 @@
+/* Smart Traffic Violation Detection - Global Styles */
+
+:root {
+  --neon-blue: #00d4ff;
+  --neon-red: #ef4444;
+  --neon-amber: #f59e0b;
+  --neon-yellow: #eab308;
+  --neon-green: #10b981;
+  --glass-bg: rgba(15, 23, 42, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.12);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(10, 10, 35, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.35);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.65);
+}
+
+/* Glass Card */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-subtle {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Glow Effects */
+.glow-blue {
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.35);
+}
+.glow-red {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.35);
+}
+.glow-amber {
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.35);
+}
+.glow-yellow {
+  box-shadow: 0 0 15px rgba(234, 179, 8, 0.35);
+}
+.glow-green {
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.35);
+}
+
+/* Scanning Button Animation */
+.scan-btn {
+  background-size: 200% 200%;
+  animation: scan 2s linear infinite;
+}
+@keyframes scan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Pulse Badge */
+.pulse-badge {
+  animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .6; }
+}
+
+/* Modal Overlay */
+.modal-backdrop {
+  background: rgba(2, 6, 23, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+/* Typography Overrides */
+.font-orbitron {
+  font-family: 'Orbitron', monospace;
+}
+.font-exo {
+  font-family: 'Exo 2', sans-serif;
+}
+
+#video-overlay-canvas {
+  pointer-events: none;
+}

@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Smart Traffic Violation Detection & Management System</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<!-- Font Awesome -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<!-- Custom Styles -->
+<link rel="stylesheet" href="./style.css">
+
+<style>
+* { font-family: 'Exo 2', sans-serif; }
+h1, h2, h3, .font-title { font-family: 'Orbitron', monospace; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+body {
+  background: radial-gradient(ellipse at bottom, #070b19 0%, #030712 50%, #020617 100%);
+  color: #f8fafc;
+  min-height: 100vh;
+}
+
+/* Splash Screen */
+#splash-screen {
+  position: fixed; inset: 0;
+  background: radial-gradient(circle, #020617, #070b19, #030712);
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  z-index: 1000;
+  transition: opacity 0.6s ease;
+}
+
+.splash-title-container {
+  animation: zoom 1.6s ease forwards;
+  opacity: 0;
+}
+
+@keyframes zoom {
+  0% { transform: scale(0.7); opacity: 0; }
+  70% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.title-sub {
+  font-size: clamp(1.8rem, 5vw, 3.2rem);
+  font-weight: 900;
+  background: linear-gradient(135deg, #00d4ff 0%, #38bdf8 40%, #ef4444 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+</style>
+</head>
+<body class="antialiased">
+
+<!-- SPLASH SCREEN -->
+<div id="splash-screen">
+  <div class="splash-title-container text-center px-4">
+    <div class="text-cyan-400 font-bold uppercase tracking-widest text-xs mb-2">Automated Traffic Monitoring</div>
+    <div class="title-sub font-title">AI SMART TRAFFIC SYSTEM</div>
+    <div class="mt-4 text-xs tracking-widest text-slate-400 uppercase">
+      YOLOv8 • ByteTrack • EasyOCR • MongoDB
+    </div>
+  </div>
+  <div class="w-64 h-1.5 bg-slate-800 rounded-full mt-8 overflow-hidden">
+    <div class="h-full bg-gradient-to-r from-cyan-400 via-sky-500 to-red-500 rounded-full" style="animation: scan 1.6s forwards"></div>
+  </div>
+</div>
+
+<!-- TOP NAVIGATION HEADER (NO SIDEBAR) -->
+<header class="glass sticky top-0 z-50 border-b border-white/10 backdrop-blur-xl">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <!-- Brand / Home Link -->
+    <div onclick="showView('home')" class="flex items-center gap-3 cursor-pointer group">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition">
+        <i class="fas fa-shield-alt text-lg"></i>
+      </div>
+      <div>
+        <div class="font-title text-base sm:text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 to-sky-300 bg-clip-text text-transparent">
+          SMART TRAFFIC
+        </div>
+        <div class="text-[10px] tracking-widest text-slate-400 uppercase -mt-0.5">
+          Violation Detection & Management
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Buttons -->
+    <div class="flex items-center gap-3">
+      <button id="nav-btn-home" onclick="showView('home')" class="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition flex items-center gap-2 cursor-pointer bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-lg shadow-cyan-500/10">
+        <i class="fas fa-home"></i> <span>Home</span>
+      </button>
+      <button id="nav-btn-history" onclick="showView('history')" class="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition flex items-center gap-2 cursor-pointer glass text-slate-300 hover:text-white border border-white/10 hover:border-cyan-400/40">
+        <i class="fas fa-history"></i> <span>History</span>
+      </button>
+      <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-subtle text-[11px] text-emerald-400 font-mono border border-emerald-500/20 ml-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN APPLICATION CONTENT (FULL WIDTH) -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <!-- =================================================================== -->
+  <!-- 1. HOME VIEW (CLEAN, FOCUSED ON 3 MODULES)                          -->
+  <!-- =================================================================== -->
+  <section id="home-view" class="space-y-12">
+    <!-- Clean Hero Header -->
+    <div class="text-center py-6 sm:py-10 max-w-4xl mx-auto">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold uppercase tracking-widest font-mono mb-4">
+        SMART TRAFFIC
+      </div>
+      <h1 class="text-3xl sm:text-5xl font-black font-title tracking-tight leading-tight text-white mb-4">
+        AI SMART TRAFFIC VIOLATION<br>
+        <span class="bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
+          DETECTION & MANAGEMENT SYSTEM
+        </span>
+      </h1>
+      <p class="text-slate-300 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+        AI-powered traffic monitoring for automated violation detection, evidence collection and human verification.
+      </p>
+    </div>
+
+    <!-- THREE LARGE MODULE CARDS -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+
+      <!-- CARD 1: RED SIGNAL VIOLATION -->
+      <div class="glass p-8 rounded-3xl border border-red-500/40 hover:border-red-500 flex flex-col justify-between group transition-all duration-300 hover:shadow-2xl hover:shadow-red-500/10">
+        <div>
+          <div class="w-16 h-16 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition">
+            🚦
+          </div>
+          <h2 class="font-title text-xl font-black text-red-400 mb-3">
+            RED SIGNAL VIOLATION
+          </h2>
+          <p class="text-slate-300 text-sm leading-relaxed mb-6">
+            Detect vehicles crossing the stop line while the traffic signal is red.
+          </p>
+        </div>
+        <button onclick="openModule('RED_SIGNAL')" class="w-full py-4 px-6 rounded-2xl bg-red-600/30 hover:bg-red-600 border border-red-500/60 font-title font-bold text-red-100 hover:text-white transition cursor-pointer text-xs uppercase tracking-wider flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-red-600/30">
+          <span>Open Module</span> <i class="fas fa-arrow-right"></i>
+        </button>
+      </div>
+
+      <!-- CARD 2: SPEED VIOLATION -->
+      <div class="glass p-8 rounded-3xl border border-amber-500/40 hover:border-amber-500 flex flex-col justify-between group transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/10">
+        <div>
+          <div class="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition">
+            🏎️
+          </div>
+          <h2 class="font-title text-xl font-black text-amber-400 mb-3">
+            SPEED VIOLATION
+          </h2>
+          <p class="text-slate-300 text-sm leading-relaxed mb-6">
+            Detect vehicles exceeding the configured speed limit.
+          </p>
+        </div>
+        <button onclick="openModule('SPEED')" class="w-full py-4 px-6 rounded-2xl bg-amber-600/30 hover:bg-amber-600 border border-amber-500/60 font-title font-bold text-amber-100 hover:text-white transition cursor-pointer text-xs uppercase tracking-wider flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-amber-600/30">
+          <span>Open Module</span> <i class="fas fa-arrow-right"></i>
+        </button>
+      </div>
+
+      <!-- CARD 3: NO HELMET VIOLATION -->
+      <div class="glass p-8 rounded-3xl border border-yellow-400/40 hover:border-yellow-400 flex flex-col justify-between group transition-all duration-300 hover:shadow-2xl hover:shadow-yellow-400/10">
+        <div>
+          <div class="w-16 h-16 rounded-2xl bg-yellow-500/20 border border-yellow-400/40 flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition">
+            🪖
+          </div>
+          <h2 class="font-title text-xl font-black text-yellow-400 mb-3">
+            NO HELMET VIOLATION
+          </h2>
+          <p class="text-slate-300 text-sm leading-relaxed mb-6">
+            Detect motorcycle riders travelling without a helmet.
+          </p>
+        </div>
+        <button onclick="openModule('NO_HELMET')" class="w-full py-4 px-6 rounded-2xl bg-yellow-500/30 hover:bg-yellow-500 hover:text-black border border-yellow-400/60 font-title font-bold text-yellow-100 hover:text-black transition cursor-pointer text-xs uppercase tracking-wider flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-yellow-500/30">
+          <span>Open Module</span> <i class="fas fa-arrow-right"></i>
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- 2. DEDICATED MODULE WORKSPACE VIEW                                  -->
+  <!-- =================================================================== -->
+  <section id="module-view" class="hidden space-y-8 max-w-5xl mx-auto">
+
+    <!-- Back Navigation & Module Header -->
+    <div>
+      <button onclick="showView('home')" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl glass border border-white/15 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer mb-6 hover:border-cyan-400/50">
+        <i class="fas fa-arrow-left"></i> <span>Back to Home</span>
+      </button>
+
+      <!-- Module Title & Explanation Card -->
+      <div id="module-banner-card" class="glass p-6 sm:p-8 rounded-3xl border transition-all duration-300">
+        <div class="flex items-center gap-3 mb-2">
+          <span id="module-icon" class="text-3xl">🚦</span>
+          <h1 id="module-title" class="font-title text-xl sm:text-2xl font-black text-white">
+            RED SIGNAL VIOLATION DETECTION
+          </h1>
+        </div>
+        <div id="module-description" class="text-slate-300 text-xs sm:text-sm leading-relaxed mt-2">
+          <!-- Dynamically populated in main.js -->
+        </div>
+
+        <!-- Module Specific Rules / Explanations -->
+        <div id="module-rule-content" class="mt-4 pt-4 border-t border-white/10 text-xs">
+          <!-- Injected dynamically in main.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Central Video Workspace & Upload Card (Part A: Video inside this box) -->
+    <div class="glass p-6 sm:p-8 rounded-3xl border border-white/10 space-y-4">
+      <div class="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono text-center">
+        VIDEO ANALYSIS WORKSPACE
+      </div>
+
+      <!-- Unified Video Container Box (Dashed when empty, solid when video loaded) -->
+      <div id="video-workspace-box" class="rounded-2xl border-2 border-dashed border-white/20 hover:border-cyan-400/60 transition bg-black/40 overflow-hidden relative">
+        
+        <!-- STATE 1: Choose Video File or Drag Here (Before file selection) -->
+        <div id="drop-zone" class="p-8 sm:p-14 flex flex-col items-center justify-center cursor-pointer text-center">
+          <div class="w-16 h-16 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-2xl mb-3">
+            <i class="fas fa-cloud-upload-alt"></i>
+          </div>
+          <div class="font-title text-base sm:text-lg font-bold text-white">Choose Video File or Drag Here</div>
+          <div class="text-slate-400 text-xs mt-1">MP4 / AVI / MOV / MKV • Maximum 500MB</div>
+          
+          <!-- Sample video shortcut button -->
+          <div class="mt-5 pt-3 border-t border-white/10 flex flex-wrap items-center justify-center gap-2">
+            <span class="text-xs text-slate-400">Or test with verified sample:</span>
+            <button id="load-sample-btn" type="button" class="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold cursor-pointer transition flex items-center gap-1.5">
+              <i class="fas fa-play-circle text-cyan-400"></i> <span id="sample-btn-text">Load Sample Video</span>
+            </button>
+          </div>
+          <input id="file-input" type="file" accept="video/*" class="hidden">
+        </div>
+
+        <!-- STATE 2: Video Player (Rendered inside THIS SAME large box!) -->
+        <div id="video-preview-wrapper" class="hidden p-3 sm:p-4 flex flex-col space-y-3">
+          <!-- Top bar inside player box -->
+          <div class="flex items-center justify-between pb-2 border-b border-white/10 text-xs font-mono">
+            <div class="flex items-center gap-2 overflow-hidden">
+              <span id="video-status-indicator" class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[11px] font-bold shrink-0">
+                SELECTED VIDEO
+              </span>
+              <span id="selected-file-name" class="text-slate-200 font-semibold truncate"></span>
+            </div>
+            <button id="change-video-btn" type="button" class="px-3 py-1 rounded-xl glass text-slate-300 hover:text-white border border-white/20 hover:border-cyan-400/50 text-[11px] transition cursor-pointer flex items-center gap-1.5 shrink-0">
+              <i class="fas fa-sync-alt"></i> <span>Change Video</span>
+            </button>
+          </div>
+
+          <!-- Real Video Element with Overlay Canvas Container -->
+          <div id="video-canvas-wrapper" class="relative w-full bg-black rounded-xl overflow-hidden shadow-2xl flex items-center justify-center max-h-[500px]">
+            <video id="module-video-player" class="w-full max-h-[500px] object-contain bg-black rounded-xl" controls playsinline></video>
+            <canvas id="video-overlay-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
+          </div>
+
+          <!-- Bottom bar inside player box -->
+          <div class="flex items-center justify-between pt-1 px-1 text-[11px] text-slate-400 font-mono">
+            <span id="video-meta-tag">Local Video Preview (Pre-analysis)</span>
+            <span id="selected-file-size" class="text-slate-500"></span>
+          </div>
+
+          <!-- RED SIGNAL DETECTION ZONE Explanation (shown only when in RED_SIGNAL mode and previewing) -->
+          <div id="red-signal-zone-explanation" class="hidden p-4 rounded-xl bg-slate-900/80 border border-red-500/30 text-xs font-mono space-y-2">
+            <div class="flex items-center justify-between border-b border-red-500/20 pb-1.5">
+              <span class="font-bold text-red-400 flex items-center gap-2">
+                <i class="fas fa-traffic-light"></i> RED SIGNAL DETECTION ZONE
+              </span>
+              <span class="text-[10px] text-slate-400">Live Preview Overlay</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300 text-[11px]">
+              <div class="flex items-start gap-2">
+                <span class="w-2.5 h-2.5 rounded-sm bg-amber-400 border border-amber-300 shrink-0 mt-0.5"></span>
+                <span><strong>Traffic Light ROI:</strong> The highlighted region is analyzed to determine signal state (RED / GREEN).</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="w-2.5 h-2.5 rounded-sm bg-red-500 border border-red-400 shrink-0 mt-0.5"></span>
+                <span><strong>Stop Line:</strong> A tracked vehicle crossing this calibrated line while the signal is RED is recorded as a violation.</span>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-400 pt-1 border-t border-white/5 flex items-center gap-1.5">
+              <i class="fas fa-info-circle text-cyan-400"></i>
+              <span>Detection zone uses the currently configured camera calibration (<code class="text-cyan-300">backend/road_config.json</code>).</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Real-time Progress Bar (visible during AI processing) -->
+      <div id="processing-box" class="hidden glass p-5 rounded-2xl border border-cyan-500/30 space-y-2.5">
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-cyan-300 font-bold uppercase flex items-center gap-2">
+            <i class="fas fa-cog fa-spin"></i> PROCESSING VIDEO
+          </span>
+          <span id="progress-percentage-label" class="font-bold text-white">Progress: 0%</span>
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-3 overflow-hidden p-0.5 border border-white/10">
+          <div id="progress-bar-fill" class="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-500 to-indigo-500 transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div id="processing-status-detail" class="text-xs text-slate-400 font-mono">Running AI detection and tracking...</div>
+      </div>
+
+      <!-- Action status message -->
+      <div class="min-h-[22px] text-center">
+        <p id="upload-status" class="text-xs text-slate-400"></p>
+      </div>
+
+      <!-- Start Button -->
+      <div class="text-center pt-1">
+        <button id="start-detection-btn" disabled class="px-10 py-4 rounded-2xl bg-slate-800 text-slate-500 font-title text-xs sm:text-sm font-black uppercase tracking-wider transition-all duration-300 cursor-not-allowed">
+          START DETECTION
+        </button>
+      </div>
+    </div>
+
+    <!-- Detected Violations Section -->
+    <div id="detected-violations-section" class="hidden space-y-4">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <h2 id="violations-header-title" class="font-title text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          DETECTED VIOLATIONS
+        </h2>
+        <span id="violations-count-tag" class="px-3 py-0.5 rounded-full text-xs font-mono glass border border-white/20 text-cyan-300">
+          0 Records
+        </span>
+      </div>
+
+      <!-- Violation Cards Container -->
+      <div id="violations-cards-container" class="space-y-4">
+        <!-- Cards dynamically injected in main.js -->
+      </div>
+    </div>
+
+  </section>
+
+  <!-- =================================================================== -->
+  <!-- 3. SEPARATE HISTORY VIEW                                            -->
+  <!-- =================================================================== -->
+  <section id="history-view" class="hidden space-y-8 max-w-6xl mx-auto">
+    <!-- History Header -->
+    <div class="text-center py-4">
+      <h1 class="text-2xl sm:text-4xl font-black font-title tracking-tight text-white mb-2">
+        ANALYSIS HISTORY
+      </h1>
+      <p class="text-slate-400 text-xs sm:text-sm max-w-xl mx-auto">
+        Historical video analyses and violations stored in MongoDB.
+      </p>
+    </div>
+
+    <!-- Category Tabs -->
+    <div class="flex justify-center">
+      <div class="glass p-1.5 rounded-2xl border border-white/15 inline-flex gap-2 text-xs sm:text-sm font-bold">
+        <button id="hist-tab-red" onclick="filterHistory('RED_SIGNAL')" class="px-5 py-2.5 rounded-xl transition cursor-pointer bg-red-600/30 text-red-200 border border-red-500/50 shadow-lg">
+          🚦 RED SIGNAL
+        </button>
+        <button id="hist-tab-speed" onclick="filterHistory('SPEED')" class="px-5 py-2.5 rounded-xl transition cursor-pointer text-slate-300 hover:text-amber-300 border border-transparent">
+          🏎️ SPEED
+        </button>
+        <button id="hist-tab-helmet" onclick="filterHistory('NO_HELMET')" class="px-5 py-2.5 rounded-xl transition cursor-pointer text-slate-300 hover:text-yellow-300 border border-transparent">
+          🪖 NO HELMET
+        </button>
+      </div>
+    </div>
+
+    <!-- History Cards / Table Container -->
+    <div id="history-list-container" class="space-y-4">
+      <!-- Dynamically populated in main.js -->
+    </div>
+  </section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="mt-16 text-center text-xs text-slate-500 pb-8 border-t border-white/5 pt-6">
+  © 2026 AI Smart Traffic Violation Detection & Management System • Computer Vision & Deep Learning
+</footer>
+
+<!-- SCRIPTS -->
+<script type="module" src="./main.js"></script>
+
+<script>
+// Dismiss splash screen on load
+window.addEventListener("DOMContentLoaded", () => {
+  setTimeout(() => {
+    const splash = document.getElementById("splash-screen");
+    if (splash) {
+      splash.style.opacity = "0";
+      setTimeout(() => splash.remove(), 600);
+    }
+  }, 1200);
+});
+</script>
+
+</body>
+</html>
