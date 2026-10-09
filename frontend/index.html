@@ -97,7 +97,7 @@ body {
       <button id="nav-btn-history" onclick="showView('history')" class="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition flex items-center gap-2 cursor-pointer glass text-slate-300 hover:text-white border border-white/10 hover:border-cyan-400/40">
         <i class="fas fa-history"></i> <span>History</span>
       </button>
-      <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-subtle text-[11px] text-emerald-400 font-mono border border-emerald-500/20 ml-2">
+      <div id="backend-status-badge" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-subtle text-[11px] text-emerald-400 font-mono border border-emerald-500/20 ml-2">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Online
       </div>
     </div>
@@ -271,27 +271,129 @@ body {
             <span id="selected-file-size" class="text-slate-500"></span>
           </div>
 
-          <!-- RED SIGNAL DETECTION ZONE Explanation (shown only when in RED_SIGNAL mode and previewing) -->
-          <div id="red-signal-zone-explanation" class="hidden p-4 rounded-xl bg-slate-900/80 border border-red-500/30 text-xs font-mono space-y-2">
-            <div class="flex items-center justify-between border-b border-red-500/20 pb-1.5">
-              <span class="font-bold text-red-400 flex items-center gap-2">
-                <i class="fas fa-traffic-light"></i> RED SIGNAL DETECTION ZONE
+          <!-- INTERACTIVE CALIBRATION PANEL (for RED_SIGNAL module) -->
+          <div id="red-signal-calibration-panel" class="hidden p-4 rounded-2xl bg-slate-900/95 border border-red-500/40 text-xs font-mono space-y-3 shadow-xl">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                <span class="font-title text-xs sm:text-sm font-bold text-red-400 tracking-wider">
+                  CALIBRATE DETECTION ZONE
+                </span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button id="btn-draw-stop-line" type="button" class="px-3.5 py-1.5 rounded-xl bg-red-600/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-500/50 font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-sm text-xs">
+                  <i class="fas fa-draw-polygon"></i> <span>Draw Stop Line</span>
+                </button>
+                <button id="btn-draw-traffic-roi" type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-500/50 font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-sm text-xs">
+                  <i class="fas fa-vector-square"></i> <span>Select Traffic Light</span>
+                </button>
+                <button id="btn-reset-calibration" type="button" class="px-3.5 py-1.5 rounded-xl glass hover:bg-slate-700/60 text-slate-300 hover:text-white border border-white/20 transition cursor-pointer flex items-center gap-1.5 text-xs">
+                  <i class="fas fa-undo"></i> <span>Reset Calibration</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Guidance banner -->
+            <div id="calib-guide-box" class="p-2.5 rounded-xl bg-slate-800/80 border border-white/10 text-[11px] text-slate-300 flex items-center gap-2">
+              <i class="fas fa-info-circle text-cyan-400 text-sm shrink-0"></i>
+              <span id="calib-guide-text">
+                Click <strong>Draw Stop Line</strong> to place Point A and Point B across the roadway stopping boundary. Click <strong>Select Traffic Light</strong> to box the signal light.
               </span>
-              <span class="text-[10px] text-slate-400">Live Preview Overlay</span>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300 text-[11px]">
-              <div class="flex items-start gap-2">
-                <span class="w-2.5 h-2.5 rounded-sm bg-amber-400 border border-amber-300 shrink-0 mt-0.5"></span>
-                <span><strong>Traffic Light ROI:</strong> The highlighted region is analyzed to determine signal state (RED / GREEN).</span>
+
+            <!-- Calibration Status Indicators -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+              <div id="status-stop-line-box" class="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-between">
+                <span class="text-slate-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-red-500"></span> Stop Line:
+                </span>
+                <span id="status-stop-line-val" class="font-bold text-slate-400 font-mono">Not Configured</span>
               </div>
-              <div class="flex items-start gap-2">
-                <span class="w-2.5 h-2.5 rounded-sm bg-red-500 border border-red-400 shrink-0 mt-0.5"></span>
-                <span><strong>Stop Line:</strong> A tracked vehicle crossing this calibrated line while the signal is RED is recorded as a violation.</span>
+              <div id="status-roi-box" class="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-between">
+                <span class="text-slate-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-400"></span> Traffic Light ROI:
+                </span>
+                <span id="status-roi-val" class="font-bold text-slate-400 font-mono">Not Configured</span>
               </div>
             </div>
+
             <div class="text-[10px] text-slate-400 pt-1 border-t border-white/5 flex items-center gap-1.5">
-              <i class="fas fa-info-circle text-cyan-400"></i>
-              <span>Detection zone uses the currently configured camera calibration (<code class="text-cyan-300">backend/road_config.json</code>).</span>
+              <i class="fas fa-check-double text-cyan-400"></i>
+              <span>Calibrated coordinates are stored per-video in original video pixel space. Video preview can be played anytime with overlays visible.</span>
+            </div>
+          </div>
+
+          <!-- INTERACTIVE CALIBRATION PANEL (for SPEED module) -->
+          <div id="speed-calibration-panel" class="hidden p-4 rounded-2xl bg-slate-900/95 border border-amber-500/40 text-xs font-mono space-y-3 shadow-xl">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span class="font-title text-xs sm:text-sm font-bold text-amber-400 tracking-wider">
+                  CALIBRATE SPEED MEASUREMENT ZONE
+                </span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button id="btn-draw-speed-line-a" type="button" class="px-3.5 py-1.5 rounded-xl bg-cyan-600/30 hover:bg-cyan-600 text-cyan-200 hover:text-white border border-cyan-500/50 font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-sm text-xs">
+                  <i class="fas fa-draw-polygon"></i> <span>Draw Line A</span>
+                </button>
+                <button id="btn-draw-speed-line-b" type="button" class="px-3.5 py-1.5 rounded-xl bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-500/50 font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-sm text-xs">
+                  <i class="fas fa-draw-polygon"></i> <span>Draw Line B</span>
+                </button>
+                <button id="btn-reset-speed-calibration" type="button" class="px-3.5 py-1.5 rounded-xl glass hover:bg-slate-700/60 text-slate-300 hover:text-white border border-white/20 transition cursor-pointer flex items-center gap-1.5 text-xs">
+                  <i class="fas fa-undo"></i> <span>Reset Calibration</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Guidance banner -->
+            <div id="speed-calib-guide-box" class="p-2.5 rounded-xl bg-slate-800/80 border border-white/10 text-[11px] text-slate-300 flex items-center gap-2">
+              <i class="fas fa-info-circle text-amber-400 text-sm shrink-0"></i>
+              <span id="speed-calib-guide-text">
+                Click <strong>Draw Line A</strong> to place 2 points for Line A (cyan), then <strong>Draw Line B</strong> for Line B (orange). Set physical distance and speed limit.
+              </span>
+            </div>
+
+            <!-- Distance and Speed Limit Inputs -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+              <div class="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700 space-y-1">
+                <label for="speed-distance-input" class="block text-slate-300 font-semibold flex items-center gap-1.5">
+                  <i class="fas fa-ruler-horizontal text-cyan-400"></i> Distance Between Lines (meters):
+                </label>
+                <div class="flex items-center gap-2">
+                  <input id="speed-distance-input" type="number" step="0.1" min="0.5" max="500" value="10.0" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white font-mono focus:border-cyan-400 focus:outline-none">
+                  <span class="text-slate-400 text-xs">m</span>
+                </div>
+              </div>
+              <div class="p-2.5 rounded-xl bg-slate-800/70 border border-slate-700 space-y-1">
+                <label for="speed-limit-input" class="block text-slate-300 font-semibold flex items-center gap-1.5">
+                  <i class="fas fa-tachometer-alt text-amber-400"></i> Speed Limit (km/h):
+                </label>
+                <div class="flex items-center gap-2">
+                  <input id="speed-limit-input" type="number" step="1" min="5" max="300" value="60" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-white font-mono focus:border-amber-400 focus:outline-none">
+                  <span class="text-slate-400 text-xs">km/h</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Calibration Status Indicators -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+              <div id="status-line-a-box" class="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-between">
+                <span class="text-slate-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Line A (Entry):
+                </span>
+                <span id="status-line-a-val" class="font-bold text-slate-400 font-mono">Not Configured</span>
+              </div>
+              <div id="status-line-b-box" class="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-between">
+                <span class="text-slate-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-400"></span> Line B (Exit):
+                </span>
+                <span id="status-line-b-val" class="font-bold text-slate-400 font-mono">Not Configured</span>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-slate-400 pt-1 border-t border-white/5 flex items-center gap-1.5">
+              <i class="fas fa-check-double text-amber-400"></i>
+              <span>Calibrated lines and parameters are stored per-video in original video pixel space. Both lines must be set before detection can start.</span>
             </div>
           </div>
         </div>
@@ -317,8 +419,30 @@ body {
         <p id="upload-status" class="text-xs text-slate-400"></p>
       </div>
 
-      <!-- Start Button -->
-      <div class="text-center pt-1">
+      <!-- Start Button & Calibration Verification Checklist -->
+      <div class="text-center pt-1 space-y-2">
+        <div id="red-signal-calib-checklist" class="hidden flex flex-wrap items-center justify-center gap-4 text-xs font-mono">
+          <span id="chk-stop-line" class="flex items-center gap-1.5 text-slate-400">
+            <i class="far fa-circle text-slate-500"></i> <span>Stop line configured</span>
+          </span>
+          <span id="chk-traffic-roi" class="flex items-center gap-1.5 text-slate-400">
+            <i class="far fa-circle text-slate-500"></i> <span>Traffic light selected</span>
+          </span>
+        </div>
+        <div id="speed-calib-checklist" class="hidden flex flex-wrap items-center justify-center gap-4 text-xs font-mono">
+          <span id="chk-line-a" class="flex items-center gap-1.5 text-slate-400">
+            <i class="far fa-circle text-slate-500"></i> <span>Line A configured</span>
+          </span>
+          <span id="chk-line-b" class="flex items-center gap-1.5 text-slate-400">
+            <i class="far fa-circle text-slate-500"></i> <span>Line B configured</span>
+          </span>
+          <span id="chk-distance" class="flex items-center gap-1.5 text-slate-400">
+            <i class="far fa-circle text-slate-500"></i> <span>Distance &gt; 0</span>
+          </span>
+          <span id="chk-speed-limit" class="flex items-center gap-1.5 text-slate-400">
+            <i class="far fa-circle text-slate-500"></i> <span>Speed limit &gt; 0</span>
+          </span>
+        </div>
         <button id="start-detection-btn" disabled class="px-10 py-4 rounded-2xl bg-slate-800 text-slate-500 font-title text-xs sm:text-sm font-black uppercase tracking-wider transition-all duration-300 cursor-not-allowed">
           START DETECTION
         </button>

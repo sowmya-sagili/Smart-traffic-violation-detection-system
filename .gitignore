@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.dll
 
 # Virtual environments
 .venv/
@@ -13,28 +14,31 @@ ENV/
 .env
 .env.*
 *.env
+!.env.example
 
 # IDE / Editor configurations
 .vscode/
 .idea/
 
-# Large binary model weights
+# AI Model Weights (Include required YOLO project model weights)
 *.pt
 *.pth
 *.onnx
 *.bin
+!backend/yolov8n.pt
+!backend/helmet_yolov8n.pt
 
-# Videos & media files
-*.mp4
-*.MP4
-*.avi
-*.AVI
-*.mov
-*.MOV
-*.mkv
-*.MKV
+# Media files in root (Sample videos are preserved in frontend/)
+/*.mp4
+/*.MP4
+/*.avi
+/*.mov
 
-# Application runtime storage (preserve directories via .gitkeep)
+# Reports and temporary development artifacts
+*_REPORT.md
+*_DIAGNOSIS.md
+
+# Application runtime storage (Preserve directories via .gitkeep)
 backend/uploads/*
 !backend/uploads/.gitkeep
 backend/outputs/*
@@ -42,11 +46,18 @@ backend/outputs/*
 backend/evidence/*
 !backend/evidence/.gitkeep
 
-# Logs, databases, and OS files
+# Testing, caches, and scratch files
+.pytest_cache/
+.mypy_cache/
+scratch/
+benchmarks/
+.git_archive/
+*.git_archive/
+**/.git_archive/
+
+# Logs, databases, and OS metadata
 *.log
 *.sqlite
 *.sqlite3
 .DS_Store
 Thumbs.db
-.git_archive/
-*.git_archive/

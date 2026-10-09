@@ -1,10 +1,11 @@
 import os
 import uuid
 import shutil
+import json
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -49,6 +50,22 @@ app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 app.mount("/evidence", StaticFiles(directory=EVIDENCE_DIR), name="evidence")
 
 
+@app.on_event("startup")
+async def startup_event():
+    import threading
+    def _warmup():
+        try:
+            from video_processor import get_vehicle_model, get_helmet_model
+            from ocr_service import get_ocr_reader
+            get_vehicle_model()
+            get_helmet_model()
+            get_ocr_reader()
+            print("[WARMUP] AI models and EasyOCR reader preloaded into memory.")
+        except Exception as e:
+            print(f"[WARMUP] Non-fatal warmup exception: {e}")
+    threading.Thread(target=_warmup, daemon=True).start()
+
+
 def run_video_processing_task(video_id: str):
     """Background task worker for video processing and database synchronization."""
     doc = get_video_record(video_id)
@@ -59,8 +76,13 @@ def run_video_processing_task(video_id: str):
     output_filename = f"processed_{video_id}.mp4"
     output_path = os.path.join(OUTPUTS_DIR, output_filename)
 
-    def update_progress(pct: int):
-        update_video_record(video_id, {"progress": pct})
+    def update_progress(pct: int, current_frame: int = 0, total_frames: int = 0, fps: float = 0.0):
+        update_video_record(video_id, {
+            "progress": pct,
+            "current_frame": current_frame,
+            "total_frames": total_frames,
+            "processing_fps": round(fps, 1)
+        })
 
     try:
         update_video_record(video_id, {
@@ -70,6 +92,36 @@ def run_video_processing_task(video_id: str):
         })
 
         road_config = load_road_config()
+        # Per-video interactive calibration override
+        calib = doc.get("calibration")
+        if calib and isinstance(calib, dict):
+            # RED_SIGNAL calibration overrides
+            if "stop_line" in calib and calib["stop_line"]:
+                road_config["stop_line"] = calib["stop_line"]
+            if "traffic_light_roi" in calib and calib["traffic_light_roi"]:
+                road_config["traffic_light_roi"] = calib["traffic_light_roi"]
+            if "traffic_light_mode" in calib and calib["traffic_light_mode"]:
+                road_config["traffic_light_mode"] = calib["traffic_light_mode"]
+
+            # SPEED calibration overrides
+            if "speed" not in road_config or not isinstance(road_config["speed"], dict):
+                road_config["speed"] = {}
+            if "line_a" in calib and calib["line_a"]:
+                road_config["speed"]["line_a"] = calib["line_a"]
+            if "line_b" in calib and calib["line_b"]:
+                road_config["speed"]["line_b"] = calib["line_b"]
+            if "distance_meters" in calib and calib["distance_meters"] is not None:
+                road_config["speed"]["distance_meters"] = float(calib["distance_meters"])
+            if "speed_limit_kmh" in calib and calib["speed_limit_kmh"] is not None:
+                road_config["speed"]["speed_limit_kmh"] = float(calib["speed_limit_kmh"])
+
+            print(f"[CALIBRATION] Using per-video calibration for {video_id}: "
+                  f"stop_line={road_config.get('stop_line')}, roi={road_config.get('traffic_light_roi')}, "
+                  f"speed_line_a={road_config.get('speed', {}).get('line_a')}, speed_line_b={road_config.get('speed', {}).get('line_b')}, "
+                  f"dist={road_config.get('speed', {}).get('distance_meters')}, limit={road_config.get('speed', {}).get('speed_limit_kmh')}")
+        else:
+            print(f"[CALIBRATION] Using default road_config fallback for {video_id}")
+
         analysis_type = doc.get("analysis_type", "RED_SIGNAL")
         result = process_video(
             input_path=input_path,
@@ -131,7 +183,8 @@ def get_config():
 @app.post("/api/upload")
 async def upload_video(
     file: UploadFile = File(...),
-    analysis_type: str = Form("RED_SIGNAL")
+    analysis_type: str = Form("RED_SIGNAL"),
+    calibration_json: Optional[str] = Form(None)
 ):
     """
     Accepts video upload, validates extension, saves to backend/uploads with UUID,
@@ -163,13 +216,21 @@ async def upload_video(
     finally:
         await file.close()
 
+    calib_obj = None
+    if calibration_json:
+        try:
+            calib_obj = json.loads(calibration_json)
+        except Exception as e:
+            print(f"Warning: Could not parse calibration_json on upload: {e}")
+
     try:
         create_video_record(
             video_id=video_id,
             original_filename=original_filename,
             stored_filename=stored_filename,
             input_path=input_path,
-            analysis_type=norm_analysis_type
+            analysis_type=norm_analysis_type,
+            calibration=calib_obj
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to save video record to database: {exc}")
@@ -182,8 +243,74 @@ async def upload_video(
     }
 
 
+@app.post("/api/calibration/{video_id}")
+async def save_calibration(video_id: str, payload: Dict[str, Any] = Body(...)):
+    """
+    Saves or updates per-video interactive calibration (stop_line, traffic_light_roi, line_a, line_b, distance_meters, speed_limit_kmh) into MongoDB.
+    """
+    doc = get_video_record(video_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Video ID not found")
+
+    existing_calib = doc.get("calibration") or {}
+    calibration_data = {
+        "stop_line": payload.get("stop_line", existing_calib.get("stop_line")),
+        "traffic_light_roi": payload.get("traffic_light_roi", existing_calib.get("traffic_light_roi")),
+        "traffic_light_mode": payload.get("traffic_light_mode", existing_calib.get("traffic_light_mode", "red")),
+        "line_a": payload.get("line_a", existing_calib.get("line_a")),
+        "line_b": payload.get("line_b", existing_calib.get("line_b")),
+        "distance_meters": payload.get("distance_meters", existing_calib.get("distance_meters")),
+        "speed_limit_kmh": payload.get("speed_limit_kmh", existing_calib.get("speed_limit_kmh")),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    update_video_record(video_id, {"calibration": calibration_data})
+    return {
+        "video_id": video_id,
+        "calibration": calibration_data,
+        "message": "Calibration saved successfully"
+    }
+
+
+@app.get("/api/calibration/{video_id}")
+def get_calibration(video_id: str):
+    """
+    Retrieves per-video calibration from MongoDB, falling back to road_config.json defaults.
+    """
+    doc = get_video_record(video_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Video ID not found")
+
+    if doc.get("calibration"):
+        return {
+            "video_id": video_id,
+            "source": "per_video",
+            "calibration": doc["calibration"]
+        }
+
+    # Fallback to road_config.json
+    cfg = load_road_config()
+    speed_cfg = cfg.get("speed", {})
+    return {
+        "video_id": video_id,
+        "source": "default_fallback",
+        "calibration": {
+            "stop_line": cfg.get("stop_line", [[500, 500], [500, 900]]),
+            "traffic_light_roi": cfg.get("traffic_light_roi", [[50, 50], [150, 200]]),
+            "traffic_light_mode": cfg.get("traffic_light_mode", "red"),
+            "line_a": speed_cfg.get("line_a", [[520, 450], [520, 950]]),
+            "line_b": speed_cfg.get("line_b", [[730, 450], [730, 950]]),
+            "distance_meters": speed_cfg.get("distance_meters", 10.0),
+            "speed_limit_kmh": speed_cfg.get("speed_limit_kmh", 60.0)
+        }
+    }
+
+
 @app.post("/api/process/{video_id}")
-def start_processing(video_id: str, background_tasks: BackgroundTasks):
+def start_processing(
+    video_id: str,
+    background_tasks: BackgroundTasks,
+    analysis_type: Optional[str] = Query(None, description="Optional override for analysis mode (RED_SIGNAL, SPEED, NO_HELMET, ALL)")
+):
     """
     Initiates asynchronous video processing for the specified video_id using BackgroundTasks.
     """
@@ -198,12 +325,18 @@ def start_processing(video_id: str, background_tasks: BackgroundTasks):
             "message": "Video is already being processed"
         }
 
-    update_video_record(video_id, {
+    updates = {
         "status": "PROCESSING",
         "progress": 0,
         "started_at": datetime.now(timezone.utc),
         "error": None
-    })
+    }
+    if analysis_type:
+        norm_type = str(analysis_type).upper().strip()
+        if norm_type in ("RED_SIGNAL", "SPEED", "NO_HELMET", "ALL"):
+            updates["analysis_type"] = norm_type
+
+    update_video_record(video_id, updates)
 
     background_tasks.add_task(run_video_processing_task, video_id)
 
@@ -227,6 +360,9 @@ def get_status(video_id: str):
         "video_id": video_id,
         "status": doc["status"],
         "progress": doc.get("progress", 0),
+        "current_frame": doc.get("current_frame", 0),
+        "total_frames": doc.get("total_frames", 0),
+        "processing_fps": doc.get("processing_fps", 0),
         "violations": doc.get("violations_count", 0),
         "error": doc.get("error")
     }
@@ -321,7 +457,8 @@ def get_history(analysis_type: Optional[str] = Query(None)):
             "violations_count": r.get("violations_count", 0),
             "created_at": r.get("created_at"),
             "completed_at": r.get("completed_at"),
-            "video_url": video_url
+            "video_url": video_url,
+            "calibration": r.get("calibration")
         })
     return formatted
 
@@ -329,6 +466,12 @@ def get_history(analysis_type: Optional[str] = Query(None)):
 @app.get("/api/statistics")
 def get_statistics():
     """Returns real database aggregate metrics."""
+    return get_system_statistics()
+
+
+@app.get("/api/stats")
+def get_stats_alias():
+    """Alias for /api/statistics."""
     return get_system_statistics()
 
 

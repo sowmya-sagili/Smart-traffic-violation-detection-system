@@ -171,8 +171,13 @@ def run_ocr(vehicle_crop: np.ndarray, plate_crop: Optional[np.ndarray] = None) -
         return "Not Detected", None
 
     try:
-        # Preprocessing target for OCR: resize if too small
+        # Preprocessing target for OCR: normalize scale
         h_t, w_t = target_img.shape[:2]
+        if w_t > 320:
+            scale = 320.0 / float(w_t)
+            target_img = cv2.resize(target_img, (320, max(20, int(h_t * scale))), interpolation=cv2.INTER_AREA)
+            h_t, w_t = target_img.shape[:2]
+
         if h_t < 60:
             scale = max(1.0, 70.0 / float(h_t))
             target_img = cv2.resize(target_img, (int(w_t * scale), int(h_t * scale)), interpolation=cv2.INTER_CUBIC)
@@ -183,12 +188,8 @@ def run_ocr(vehicle_crop: np.ndarray, plate_crop: Optional[np.ndarray] = None) -
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
 
-        # Run OCR
-        results = reader.readtext(enhanced, detail=1, paragraph=False)
-        if not results:
-            # Fallback to raw BGR target
-            results = reader.readtext(target_img, detail=1, paragraph=False)
-
+        # Run OCR with batch_size=1
+        results = reader.readtext(enhanced, detail=1, paragraph=False, batch_size=1)
         if not results:
             return "Not Detected", None
 

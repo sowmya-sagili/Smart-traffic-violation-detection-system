@@ -74,7 +74,8 @@ def create_video_record(
     original_filename: str,
     stored_filename: str,
     input_path: str,
-    analysis_type: str = "RED_SIGNAL"
+    analysis_type: str = "RED_SIGNAL",
+    calibration: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Creates a new video tracking document in MongoDB."""
     db = get_db()
@@ -85,6 +86,7 @@ def create_video_record(
         "stored_filename": stored_filename,
         "input_path": input_path,
         "analysis_type": analysis_type,
+        "calibration": calibration,
         "output_path": None,
         "status": "UPLOADED",
         "progress": 0,
@@ -118,7 +120,15 @@ def get_all_video_records(limit: int = 100, analysis_type: Optional[str] = None)
     db = get_db()
     query = {}
     if analysis_type:
-        query["analysis_type"] = analysis_type.upper().strip()
+        norm_type = analysis_type.upper().strip()
+        if norm_type == "RED_SIGNAL":
+            query["$or"] = [
+                {"analysis_type": "RED_SIGNAL"},
+                {"analysis_type": None},
+                {"analysis_type": {"$exists": False}}
+            ]
+        else:
+            query["analysis_type"] = norm_type
     cursor = db.videos.find(query).sort("created_at", DESCENDING).limit(limit)
     return [_serialize_doc(d) for d in cursor]
 

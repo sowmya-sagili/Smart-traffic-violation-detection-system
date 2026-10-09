@@ -22,6 +22,26 @@ export async function getConfig() {
   return await res.json();
 }
 
+export async function saveCalibration(videoId, calibrationData) {
+  const res = await fetch(`${API_BASE}/api/calibration/${videoId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(calibrationData),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to save calibration: HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export async function getCalibration(videoId) {
+  const res = await fetch(`${API_BASE}/api/calibration/${videoId}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch calibration: HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
 export async function getViolations(filters = {}) {
   const params = new URLSearchParams();
   if (filters.video_id) params.append("video_id", filters.video_id);

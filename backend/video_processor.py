@@ -1,4 +1,6 @@
 import os
+import time
+import math
 import uuid
 import json
 import cv2
@@ -37,6 +39,9 @@ def get_video_writer(output_path: str, fps: float, width: int, height: int):
     Prefers Windows Media Foundation H264 on Windows, with fallbacks to avc1 and mp4v.
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    if backend_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = backend_dir + os.pathsep + os.environ.get("PATH", "")
     
     # Try Windows Media Foundation H264 first (Chrome / Edge / Firefox compatible)
     if os.name == 'nt':
@@ -57,6 +62,28 @@ def get_video_writer(output_path: str, fps: float, width: int, height: int):
             pass
 
     raise RuntimeError(f"Failed to initialize VideoWriter for '{output_path}' with available codecs.")
+
+
+_MODEL_CACHE = {}
+
+
+def get_vehicle_model():
+    """Returns singleton cached instance of the YOLO vehicle detection model."""
+    if "vehicle" not in _MODEL_CACHE:
+        _MODEL_CACHE["vehicle"] = YOLO(VEHICLE_MODEL_WEIGHTS)
+    return _MODEL_CACHE["vehicle"]
+
+
+def get_helmet_model():
+    """Returns singleton cached instance of the YOLO helmet classification model."""
+    if "helmet" not in _MODEL_CACHE:
+        if os.path.exists(HELMET_MODEL_WEIGHTS):
+            _MODEL_CACHE["helmet"] = YOLO(HELMET_MODEL_WEIGHTS)
+        elif os.path.exists(DEFAULT_HELMET_WEIGHTS):
+            _MODEL_CACHE["helmet"] = YOLO(DEFAULT_HELMET_WEIGHTS)
+        else:
+            _MODEL_CACHE["helmet"] = None
+    return _MODEL_CACHE["helmet"]
 
 
 def load_road_config(config_dict=None):
@@ -91,38 +118,48 @@ def load_road_config(config_dict=None):
 def associate_riders_with_motorcycles(motorcycles, persons):
     """
     Associates detected persons with detected motorcycles based on spatial geometry.
+    Ensures each person is assigned only to the single highest-affinity motorcycle
+    to prevent cross-contamination when multiple motorcycles appear in the same frame.
     motorcycles: list of (box, tid, conf)
     persons: list of (box, conf)
     Returns: dict mapping mtid -> list of person boxes
     """
-    associations = {}
-    for mbox, mtid, mconf in motorcycles:
-        mx1, my1, mx2, my2 = mbox
-        mw = mx2 - mx1
-        mh = my2 - my1
-        candidates = []
-        for pbox, pconf in persons:
-            px1, py1, px2, py2 = pbox
-            pcx = (px1 + px2) / 2.0
+    associations = {mtid: [] for _, mtid, _ in motorcycles}
+    if not motorcycles or not persons:
+        return associations
+
+    pair_scores = []
+    for p_idx, (pbox, pconf) in enumerate(persons):
+        px1, py1, px2, py2 = pbox
+        pcx = (px1 + px2) / 2.0
+        p_area = max(1.0, float((px2 - px1) * (py2 - py1)))
+        for mbox, mtid, mconf in motorcycles:
+            mx1, my1, mx2, my2 = mbox
+            mw = mx2 - mx1
+            mh = my2 - my1
             # Rider horizontal alignment: center inside or near motorcycle horizontal span
             if (mx1 - 0.35 * mw) <= pcx <= (mx2 + 0.35 * mw):
                 # Rider vertical position: bottom is near or inside motorcycle, top is above or near motorcycle top
                 if py2 >= (my1 - 0.15 * mh) and py1 <= (my2 + 0.15 * mh):
-                    # Compute spatial overlap area
                     inter_x1 = max(px1, mx1 - 0.20 * mw)
                     inter_x2 = min(px2, mx2 + 0.20 * mw)
                     inter_y1 = max(py1, my1 - 0.85 * mh)
                     inter_y2 = min(py2, my2)
                     inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
-                    person_area = max(1, (px2 - px1) * (py2 - py1))
-                    score = inter_area / person_area
+                    score = inter_area / p_area
                     if score >= 0.20:
-                        candidates.append((score, pbox, pconf))
-        if candidates:
-            candidates.sort(key=lambda x: x[0], reverse=True)
-            associations[mtid] = [c[1] for c in candidates]
-        else:
-            associations[mtid] = []
+                        pair_scores.append((score, mtid, p_idx))
+
+    # Sort candidates by spatial score descending
+    pair_scores.sort(key=lambda x: x[0], reverse=True)
+    assigned_persons = set()
+
+    for score, mtid, p_idx in pair_scores:
+        if p_idx not in assigned_persons:
+            if len(associations[mtid]) < 2:
+                associations[mtid].append(persons[p_idx][0])
+                assigned_persons.add(p_idx)
+
     return associations
 
 
@@ -231,10 +268,15 @@ def process_video(
         line_pts = [(int(width * 0.1), int(height * 0.65)), (int(width * 0.9), int(height * 0.65))]
 
     raw_roi = cfg.get("traffic_light_roi", [])
-    if raw_roi and isinstance(raw_roi[0], (list, tuple)) and len(raw_roi) == 2 and isinstance(raw_roi[0][0], (int, float)):
-        roi_pts_list = [raw_roi]
-    elif isinstance(raw_roi, list):
-        roi_pts_list = raw_roi
+    if raw_roi and isinstance(raw_roi, (list, tuple)):
+        if len(raw_roi) == 4 and all(isinstance(x, (int, float)) for x in raw_roi):
+            roi_pts_list = [[(int(raw_roi[0]), int(raw_roi[1])), (int(raw_roi[2]), int(raw_roi[3]))]]
+        elif len(raw_roi) == 2 and isinstance(raw_roi[0], (list, tuple)) and len(raw_roi[0]) == 2:
+            roi_pts_list = [raw_roi]
+        elif len(raw_roi) > 0 and isinstance(raw_roi[0], (list, tuple)):
+            roi_pts_list = raw_roi
+        else:
+            roi_pts_list = []
     else:
         roi_pts_list = []
 
@@ -268,18 +310,17 @@ def process_video(
     helmet_conf_thresh = float(helmet_cfg.get("helmet_confidence_threshold", CONF_HELMET))
     confirm_frames = int(helmet_cfg.get("confirmation_frames", HELMET_CONFIRMATION_FRAMES))
 
-    helmet_model = None
-    if analysis_mode in ("NO_HELMET", "ALL"):
-        if os.path.exists(HELMET_MODEL_WEIGHTS):
-            helmet_model = YOLO(HELMET_MODEL_WEIGHTS)
-        elif os.path.exists(DEFAULT_HELMET_WEIGHTS):
-            helmet_model = YOLO(DEFAULT_HELMET_WEIGHTS)
-        else:
-            print(f"Warning: Helmet model weights not found at {HELMET_MODEL_WEIGHTS}")
-
+    helmet_model = get_helmet_model() if analysis_mode in ("NO_HELMET", "ALL") else None
     detector = TrafficLightDetector()
-    model = YOLO(VEHICLE_MODEL_WEIGHTS)
-    out_writer = get_video_writer(output_path, fps, width, height)
+    model = get_vehicle_model()
+
+    proc_mode = str(cfg.get("processing_mode", "FAST")).upper().strip()
+    interval = int(cfg.get("detection_interval", 2 if proc_mode == "FAST" else 1))
+    if interval < 1:
+        interval = 1
+
+    out_fps = max(1.0, fps / float(interval))
+    out_writer = get_video_writer(output_path, out_fps, width, height)
 
     stream = model.track(
         source=input_path,
@@ -288,7 +329,8 @@ def process_video(
         tracker=TRACKER_CFG,
         stream=True,
         persist=True,
-        verbose=False
+        verbose=False,
+        vid_stride=interval
     )
 
     violated_ids = set()
@@ -309,8 +351,13 @@ def process_video(
         video_evidence_dir = os.path.join(EVIDENCE_DIR, video_id)
         os.makedirs(video_evidence_dir, exist_ok=True)
 
+    t_loop_start = time.perf_counter()
+    last_reported_pct = -1
+    last_reported_time = 0.0
+
     try:
-        for f_idx, res in enumerate(stream):
+        for s_idx, res in enumerate(stream):
+            f_idx = s_idx * interval
             frame = res.orig_img.copy()
 
             # --- RED SIGNAL VISUALS ---
@@ -381,6 +428,9 @@ def process_video(
                     rider_assocs = associate_riders_with_motorcycles(motorcycles_in_frame, persons)
 
                     for mbox, mtid, mconf in motorcycles_in_frame:
+                        if mtid in helmet_violated_ids:
+                            continue
+
                         riders = rider_assocs.get(mtid, [])
                         if mtid not in no_helmet_tracker:
                             no_helmet_tracker[mtid] = {
@@ -412,21 +462,26 @@ def process_video(
                             elif h_status == "HELMET":
                                 frame_has_helmet = True
 
+                        req_confirm = confirm_frames
+
                         if frame_has_no_helmet:
                             m_tracker["no_helmet_frames"] += 1
                             m_tracker["status"] = "NO_HELMET"
                             m_tracker["conf"] = max(m_tracker["conf"], best_nh_conf)
                             m_tracker["head_box"] = best_nh_head
                             m_tracker["rider_box"] = best_nh_rider
+                            print(f"[HELMET DEBUG] Track: {mtid} | Frame: {f_idx} | Prediction: WITHOUT_HELMET | Confidence: {best_nh_conf:.2f} | Confirmation: {m_tracker['no_helmet_frames']}/{confirm_frames}")
                         elif frame_has_helmet:
                             m_tracker["helmet_frames"] += 1
                             if m_tracker["status"] != "NO_HELMET":
                                 m_tracker["status"] = "HELMET"
+                            print(f"[HELMET DEBUG] Track: {mtid} | Frame: {f_idx} | Prediction: WITH_HELMET | Confidence: {h_conf:.2f} | Confirmation: 0/{confirm_frames}")
 
-                        # Violation trigger: temporal confirmation >= confirm_frames
+                        # Violation trigger: temporal confirmation >= confirm_frames (strictly 3 frames)
                         if m_tracker["no_helmet_frames"] >= confirm_frames and mtid not in helmet_violated_ids:
                             helmet_violated_ids.add(mtid)
                             violated_ids.add(mtid)
+                            print(f"[NO_HELMET EVENT] Track: {mtid} | NO_HELMET violation created")
 
                             if video_id and video_evidence_dir:
                                 try:
@@ -456,6 +511,14 @@ def process_video(
                                         (vx1, max(30, vy1 - 10)),
                                         COLOR_BAD,
                                         0.7,
+                                        2
+                                    )
+                                    put_text(
+                                        evidence_frame,
+                                        f"EVIDENCE | NO HELMET VIOLATION | Track #{mtid} | Conf: {m_tracker['conf']:.2f}",
+                                        (20, max(40, h_f - 25)),
+                                        (0, 0, 255),
+                                        0.75,
                                         2
                                     )
 
@@ -525,7 +588,8 @@ def process_video(
                             if is_red and segments_intersect(prev_centers[tid], curr_center, p1, p2):
                                 if tid not in violated_ids:
                                     violated_ids.add(tid)
-                                    print(f"[RED_SIGNAL] Violation! Frame: {f_idx}, Track: {tid}, Prev: {prev_centers[tid]}, Curr: {curr_center}, StopLine: {p1}-{p2}")
+                                    signal_str = "RED" if is_red else "GREEN"
+                                    print(f"[RED_SIGNAL EVENT] Track: {tid} | Signal: {signal_str} | Previous centroid: {prev_centers[tid]} | Current centroid: {curr_center} | Stop line: [{p1}, {p2}] | Intersection: TRUE | RED_LIGHT_JUMP created")
                                     if video_id and video_evidence_dir:
                                         try:
                                             violation_id = str(uuid.uuid4())
@@ -598,11 +662,13 @@ def process_video(
                             if tid not in line_a_crossings and len(speed_line_a) == 2:
                                 if segments_intersect(prev_centers[tid], curr_center, speed_line_a[0], speed_line_a[1]):
                                     line_a_crossings[tid] = f_idx
+                                    print(f"[SPEED CROSSING] Track: {tid} | Line: A | Frame: {f_idx}")
 
                             # Check crossing Line B (record first crossing frame)
                             if tid not in line_b_crossings and len(speed_line_b) == 2:
                                 if segments_intersect(prev_centers[tid], curr_center, speed_line_b[0], speed_line_b[1]):
                                     line_b_crossings[tid] = f_idx
+                                    print(f"[SPEED CROSSING] Track: {tid} | Line: B | Frame: {f_idx}")
 
                             # When both lines crossed and speed has not been computed yet
                             if tid in line_a_crossings and tid in line_b_crossings and tid not in measured_speeds:
@@ -616,11 +682,13 @@ def process_video(
                                         if 1.0 <= raw_speed <= 250.0:
                                             speed_kmh = round(raw_speed, 1)
                                             measured_speeds[tid] = speed_kmh
+                                            print(f"[SPEED CALCULATION] Track: {tid} | Distance: {distance_meters:.1f} m | FPS: {fps:.0f} | Frame A: {f_a} | Frame B: {f_b} | Delta Time: {delta_t:.3f} s | Speed: {speed_kmh:.1f} km/h | Limit: {speed_limit_kmh:.1f} km/h")
 
                                             # Check speed limit excess
                                             if speed_kmh > speed_limit_kmh and tid not in speed_violated_ids:
                                                 speed_violated_ids.add(tid)
                                                 violated_ids.add(tid)
+                                                print(f"[SPEED EVENT] Track: {tid} | SPEEDING created")
 
                                                 if video_id and video_evidence_dir:
                                                     try:
@@ -638,7 +706,8 @@ def process_video(
                                                         cv2.line(evidence_frame, speed_line_a[0], speed_line_a[1], (255, 220, 0), 2)
                                                         cv2.line(evidence_frame, speed_line_b[0], speed_line_b[1], (0, 165, 255), 2)
                                                         cv2.rectangle(evidence_frame, (vx1, vy1), (vx2, vy2), COLOR_BAD, 3)
-                                                        put_text(evidence_frame, f"SPEEDING #{tid}: {speed_kmh} km/h (Limit: {speed_limit_kmh:.0f})", (vx1, max(30, vy1 - 10)), COLOR_BAD, 0.7, 2)
+                                                        put_text(evidence_frame, f"SPEEDING #{tid}: {speed_kmh:.1f} km/h (Limit: {speed_limit_kmh:.0f} km/h)", (vx1, max(30, vy1 - 10)), COLOR_BAD, 0.7, 2)
+                                                        put_text(evidence_frame, f"EVIDENCE | SPEED LIMIT EXCEEDED | Track #{tid}", (20, max(40, height - 25)), (0, 165, 255), 0.75, 2)
 
                                                         evidence_fname = f"evidence_{violation_id}.jpg"
                                                         vehicle_fname = f"vehicle_{violation_id}.jpg"
@@ -698,13 +767,14 @@ def process_video(
                     if analysis_mode == "SPEED":
                         is_viol = (tid in speed_violated_ids)
                         box_color = COLOR_BAD if is_viol else COLOR_OK
+                        cls_cap = cls_name.capitalize()
                         if is_viol:
                             sp_val = measured_speeds.get(tid, 0.0)
-                            label = f"SPEEDING {sp_val:.0f} km/h #{tid}"
+                            label = f"Track {tid} | {cls_cap} | {sp_val:.1f} km/h | SPEEDING"
                         elif tid in measured_speeds:
-                            label = f"{cls_name} #{tid} {measured_speeds[tid]:.0f} km/h"
+                            label = f"Track {tid} | {cls_cap} | {measured_speeds[tid]:.1f} km/h"
                         else:
-                            label = f"{cls_name} #{tid}"
+                            label = f"Track {tid} | {cls_cap}"
                     elif analysis_mode == "RED_SIGNAL":
                         is_viol = (tid in violated_ids)
                         box_color = COLOR_BAD if is_viol else COLOR_OK
@@ -749,6 +819,13 @@ def process_video(
             # Draw semi-transparent stats HUD
             if analysis_mode == "SPEED":
                 hud_label = "Speed Violations:"
+                # Draw Speed parameters HUD badge on top-right of processed video
+                hud_text = f"Dist: {distance_meters:.1f}m | Limit: {speed_limit_kmh:.0f} km/h"
+                hud_w, hud_h = 320, 50
+                hx0, hy0 = max(10, width - hud_w - 20), 15
+                cv2.rectangle(frame, (hx0, hy0), (hx0 + hud_w, hy0 + hud_h), (20, 20, 20), -1)
+                cv2.rectangle(frame, (hx0, hy0), (hx0 + hud_w, hy0 + hud_h), (0, 165, 255), 2)
+                put_text(frame, hud_text, (hx0 + 16, hy0 + 34), (0, 165, 255), 0.70, 2)
             elif analysis_mode == "RED_SIGNAL":
                 hud_label = "Red Violations:"
                 # Draw Signal state HUD badge on top-right of processed video
@@ -766,17 +843,28 @@ def process_video(
             draw_stats_panel(frame, len(violated_ids), label=hud_label)
 
             out_writer.write(frame)
-            processed_frames += 1
+            processed_frames += interval
 
             if progress_callback and total_frames > 0:
                 pct = int(min(99, (processed_frames / total_frames) * 100))
-                progress_callback(pct)
+                t_now = time.perf_counter()
+                if (pct != last_reported_pct and (pct - last_reported_pct >= 2 or pct >= 99)) or (t_now - last_reported_time >= 0.5):
+                    cur_fps = (s_idx + 1) / max(0.001, t_now - t_loop_start)
+                    try:
+                        progress_callback(pct, current_frame=min(total_frames, f_idx + interval), total_frames=total_frames, fps=cur_fps)
+                    except TypeError:
+                        progress_callback(pct)
+                    last_reported_pct = pct
+                    last_reported_time = t_now
 
     finally:
         out_writer.release()
 
     if progress_callback:
-        progress_callback(100)
+        try:
+            progress_callback(100, current_frame=total_frames, total_frames=total_frames, fps=0.0)
+        except TypeError:
+            progress_callback(100)
 
     return {
         "total_frames": int(processed_frames),
